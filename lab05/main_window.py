@@ -1,74 +1,102 @@
-"""
-Fereastra principală a aplicației GUI PySide6.
-
-Permite selectarea unui fișier text, trimiterea lui
-unui worker prin coadă și afișarea rezultatului HTML.
-"""
-
+import os
+from PySide6.QtWidgets import (QMainWindow, QWidget, QVBoxLayout, QHBoxLayout,
+                               QLineEdit, QPushButton, QTextEdit, QFileDialog, QMessageBox)
+from PySide6.QtCore import QTimer
 import multiprocessing
-
-try:
-    from PySide6.QtWidgets import (
-        QMainWindow,
-        QWidget,
-        QVBoxLayout,
-        QHBoxLayout,
-        QPushButton,
-        QLineEdit,
-        QTextEdit,
-        QFileDialog,
-        QLabel,
-    )
-    from PySide6.QtCore import QTimer
-except ImportError:
-    # Permite importul fără PySide6 instalat (util în teste)
-    QMainWindow = object  # type: ignore[misc, assignment]
-
-from lab05.worker import ConverterWorker
+from lab5.worker import worker_process
 
 
 class MainWindow(QMainWindow):
-    """Fereastra principală a aplicației de conversie text→HTML."""
-
-    def __init__(self) -> None:
-        """Inițializează fereastra și lansează workerul."""
+    def __init__(self):
         super().__init__()
-        # TODO: Configurează titlul ferestrei și dimensiunea minimă
-        # TODO: Creează cozile multiprocessing (input_queue, output_queue)
-        # TODO: Pornește ConverterWorker
-        # TODO: Construiește UI-ul (apelează _build_ui)
-        # TODO: Configurează un QTimer pentru a verifica output_queue periodic
-        raise NotImplementedError("De implementat")
+        self.setWindowTitle("Convertor Text -> HTML")
+        self.resize(650, 450)
 
-    def _build_ui(self) -> None:
-        """Construiește interfața grafică.
 
-        Componente necesare:
-        - QLabel + QLineEdit pentru calea fișierului
-        - QPushButton "Browse" — deschide QFileDialog
-        - QPushButton "Upload" — citește fișierul și trimite în coadă
-        - QTextEdit (read-only) pentru afișarea HTML-ului rezultat
-        """
-        # TODO: Implementează layout-ul UI
-        raise NotImplementedError("De implementat")
+        self.input_queue = multiprocessing.Queue()
+        self.output_queue = multiprocessing.Queue()
+        self.worker = multiprocessing.Process(
+            target=worker_process,
+            args=(self.input_queue, self.output_queue)
+        )
+        self.worker.start()
 
-    def _browse_file(self) -> None:
-        """Deschide un dialog de selectare fișier și actualizează câmpul de cale."""
-        # TODO: Folosește QFileDialog.getOpenFileName
-        raise NotImplementedError("De implementat")
 
-    def _upload_file(self) -> None:
-        """Citește fișierul selectat și îl trimite în input_queue."""
-        # TODO: Citește fișierul, trimite textul în input_queue
-        raise NotImplementedError("De implementat")
+        self.init_ui()
 
-    def _check_output(self) -> None:
-        """Verifică dacă workerul a trimis rezultate în output_queue."""
-        # TODO: Citește non-blocant din output_queue și afișează în QTextEdit
-        raise NotImplementedError("De implementat")
 
-    def closeEvent(self, event) -> None:  # type: ignore[override]
-        """Oprește workerul la închiderea ferestrei."""
-        # TODO: Trimite None în input_queue pentru a opri workerul
-        # TODO: Așteaptă terminarea procesului worker
-        raise NotImplementedError("De implementat")
+        self.timer = QTimer()
+        self.timer.timeout.connect(self.check_queue)
+        self.timer.start(100)  # Verifică la fiecare 100ms
+
+    def init_ui(self):
+        central_widget = QWidget()
+        self.setCentralWidget(central_widget)
+        main_layout = QVBoxLayout(central_widget)
+
+
+        top_layout = QHBoxLayout()
+        self.path_input = QLineEdit()
+        self.path_input.setPlaceholderText("Introdu calea către fișierul text...")
+        self.browse_btn = QPushButton("Browse")
+        self.browse_btn.clicked.connect(self.browse_file)
+
+        top_layout.addWidget(self.path_input)
+        top_layout.addWidget(self.browse_btn)
+        main_layout.addLayout(top_layout)
+
+
+        self.text_display = QTextEdit()
+        self.text_display.setPlaceholderText("Rezultatul HTML va apărea aici...")
+        self.text_display.setReadOnly(True)
+        main_layout.addWidget(self.text_display)
+
+
+        bottom_layout = QHBoxLayout()
+        bottom_layout.addStretch()
+
+        self.convert_btn = QPushButton("Convert to HTML (via Worker)")
+        self.convert_btn.clicked.connect(self.send_to_worker)
+
+        bottom_layout.addWidget(self.convert_btn)
+        main_layout.addLayout(bottom_layout)
+
+    def browse_file(self):
+        file_path, _ = QFileDialog.getOpenFileName(self, "Deschide fișier text", "",
+                                                   "Text Files (*.txt);;All Files (*)")
+        if file_path:
+            self.path_input.setText(file_path)
+
+    def send_to_worker(self):
+        file_path = self.path_input.text()
+        if not os.path.exists(file_path):
+            QMessageBox.warning(self, "Eroare", "Fișierul specificat nu există!")
+            return
+
+        try:
+            with open(file_path, 'r', encoding='utf-8') as f:
+                content = f.read()
+
+            self.input_queue.put(content)
+        except Exception as e:
+            QMessageBox.warning(self, "Eroare", f"Nu am putut citi fișierul:\n{e}")
+
+    def check_queue(self):
+
+        while not self.output_queue.empty():
+            result = self.output_queue.get()
+            self.text_display.setPlainText(result)
+
+
+            try:
+                out_path = self.path_input.text() + ".html"
+                with open(out_path, 'w', encoding='utf-8') as f:
+                    f.write(result)
+            except:
+                pass
+
+    def closeEvent(self, event):
+
+        self.input_queue.put("STOP")
+        self.worker.join()
+        super().closeEvent(event)

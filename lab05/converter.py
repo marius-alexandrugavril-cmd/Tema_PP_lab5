@@ -1,25 +1,32 @@
-"""
-Convertor text → HTML.
+def text_to_html(text: str) -> str:
+    """
+    Convertește un text simplu în format HTML.
+    Prima linie este considerată titlu (<h1>), iar restul paragrafelor (<p>).
+    """
+    lines = text.strip().split('\n')
+    if not lines:
+        return ""
 
-Prima linie din text devine titlu <h1>.
-Blocurile separate de linii goale devin paragrafe <p>.
-"""
+    
+    title = lines[0].strip()
+
+    html_parts = [
+        "<!DOCTYPE html>",
+        "<html>",
+        "<head>",
+        f"    <title>{title}</title>",
+        "</head>",
+        "<body>",
+        f"    <h1>{title}</h1>"
+    ]
 
 
-class TextToHtmlConverter:
-    """Convertește text simplu în HTML structurat."""
+    for line in lines[1:]:
+        clean_line = line.strip()
+        if clean_line:
+            html_parts.append(f"    <p>{clean_line}</p>")
 
-    # TODO: Implementează metoda convert
-    def convert(self, text: str) -> str:
-        """Convertește textul în HTML.
+    html_parts.append("</body>")
+    html_parts.append("</html>")
 
-        Prima linie devine <h1>, blocurile separate de linie goală
-        devin paragrafe <p>.
-
-        Args:
-            text: Textul de convertit.
-
-        Returns:
-            String HTML valid.
-        """
-        raise NotImplementedError("De implementat")
+    return "\n".join(html_parts)
